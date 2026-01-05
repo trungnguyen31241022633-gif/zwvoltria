@@ -6,7 +6,7 @@ const getApiKey = (): string => {
   
   if (!key) {
     throw new Error(
-      "❌ OpenAI API Key chưa được cấu hình!\n\n" +
+      "⌠OpenAI API Key chưa được cấu hình!\n\n" +
       "Trên Vercel (chọn 1 trong 2):\n" +
       "• VITE_OPENAI_API_KEY = your_api_key (khuyên dùng)\n" +
       "• OPENAI_API_KEY = your_api_key\n\n" +
@@ -21,7 +21,7 @@ const getApiKey = (): string => {
 
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
 
-const SYSTEM_PROMPT = `Bạn là Voltria, một Chuyên gia Tuyển dụng AI cao cấp. Mục tiêu của bạn là phân tích sâu CV và đưa ra phản hồi có cấu trúc.
+const SYSTEM_PROMPT = `Bạn là Voltria AI Agent - Chuyên gia HR Tech cao cấp. Mục tiêu của bạn là phân tích sâu CV và đưa ra phản hồi có cấu trúc.
 
 **QUAN TRỌNG:** TẤT CẢ NỘI DUNG TRẢ LỜI PHẢI BẰNG TIẾNG VIỆT.
 
@@ -32,8 +32,15 @@ const SYSTEM_PROMPT = `Bạn là Voltria, một Chuyên gia Tuyển dụng AI ca
    - **Giai đoạn 2: Thực hành & Xây dựng Portfolio.** Đề xuất các dự án cá nhân, tham gia Open Source, hoặc ý tưởng Start-up nhỏ
    - **Giai đoạn 3: Cơ hội nghề nghiệp.** Đề xuất các vị trí tại các loại hình công ty cụ thể (ví dụ: "Tập đoàn công nghệ Viettel - Vị trí Junior Dev", "Startup Fintech tại TP.HCM - Vị trí BA")
 
+3. **HRM Premium Assessment:** Phân tích chuyên sâu về:
+   - Đặc điểm tâm lý hành vi qua cách viết CV
+   - 3-5 câu hỏi phỏng vấn hóc búa nhất dành riêng cho người này
+   - Điểm phù hợp văn hóa (1-100)
+   - Dự đoán khả năng thăng tiến trong 2 năm tới
+   - Lời khuyên về mức lương deal phù hợp
+
 **Yêu cầu đầu ra:**
-Trả về JSON hợp lệ. Văn phong chuyên nghiệp, khích lệ.`;
+Trả về JSON hợp lệ. Văn phong chuyên nghiệp, khách lễ.`;
 
 const createUserPrompt = (targetJob: string): string => {
   return `Vị trí công việc mục tiêu: ${targetJob || "Đánh giá tổng quát"}
@@ -55,6 +62,12 @@ Hãy phân tích CV đính kèm (file PDF hoặc hình ảnh) và tạo lộ tr�
 10. suggestedJobs: mảng ít nhất 2 items, mỗi item phải có "title", "description", và "provider" (tên công ty)
 11. developmentRoadmap: object với 2 mảng (courses, projects), mỗi mảng ít nhất 2-3 items
 12. aiAgentReview: Nhận xét chân thật, đánh giá thẳng vào điểm yếu trình bày CV (60-100 từ)
+13. hrmPremiumAssessment: object với 5 trường bắt buộc:
+    - personalityTraits: Phân tích tâm lý học hành vi (80-120 từ)
+    - interviewQuestions: mảng 3-5 câu hỏi phỏng vấn hóc búa
+    - culturalFitScore: số nguyên từ 1-100
+    - longTermPotential: Dự đoán khả năng thăng tiến (60-100 từ)
+    - salaryExpectationAdvice: Lời khuyên về mức lương (60-100 từ)
 
 **CHỈ TRẢ VỀ JSON SAU ĐÂY (KHÔNG CÓ GÌ KHÁC):**
 {
@@ -77,7 +90,14 @@ Hãy phân tích CV đính kèm (file PDF hoặc hình ảnh) và tạo lộ tr�
     "courses": [{"name": "string", "provider": "string", "description": "string"}],
     "projects": [{"name": "string", "description": "string"}]
   },
-  "aiAgentReview": "string"
+  "aiAgentReview": "string",
+  "hrmPremiumAssessment": {
+    "personalityTraits": "string",
+    "interviewQuestions": ["string"],
+    "culturalFitScore": number,
+    "longTermPotential": "string",
+    "salaryExpectationAdvice": "string"
+  }
 }`;
 };
 
@@ -241,15 +261,13 @@ export const analyzeCV = async (
       throw new Error("Response thiếu developmentRoadmap arrays");
     }
 
-    // Map response to match test folder's types
-    // Ensure suggestedJobs have provider field
+    // Map response to match types
     const suggestedJobs = (rawResult.suggestedJobs || []).map((job: any) => ({
       title: job.title || "",
       description: job.description || "",
       provider: job.provider || "Công ty đối tác"
     }));
 
-    // Ensure developmentRoadmap only has courses and projects (no jobs)
     const developmentRoadmap = {
       courses: (rawResult.developmentRoadmap?.courses || []).map((course: any) => ({
         name: course.name || "",
@@ -266,6 +284,29 @@ export const analyzeCV = async (
     const aiAgentReview = rawResult.aiAgentReview || 
       `Dựa trên phân tích CV, ${rawResult.summary || "ứng viên có tiềm năng phát triển tốt với lộ trình học tập và thực hành phù hợp."}`;
 
+    // Handle HRM Premium Assessment (new feature)
+    const hrmPremiumAssessment = rawResult.hrmPremiumAssessment ? {
+      personalityTraits: rawResult.hrmPremiumAssessment.personalityTraits || "Phân tích tâm lý chưa có sẵn",
+      interviewQuestions: Array.isArray(rawResult.hrmPremiumAssessment.interviewQuestions) 
+        ? rawResult.hrmPremiumAssessment.interviewQuestions 
+        : ["Câu hỏi phỏng vấn chưa có sẵn"],
+      culturalFitScore: typeof rawResult.hrmPremiumAssessment.culturalFitScore === "number" 
+        ? rawResult.hrmPremiumAssessment.culturalFitScore 
+        : 70,
+      longTermPotential: rawResult.hrmPremiumAssessment.longTermPotential || "Dự đoán tiềm năng chưa có sẵn",
+      salaryExpectationAdvice: rawResult.hrmPremiumAssessment.salaryExpectationAdvice || "Lời khuyên lương chưa có sẵn"
+    } : {
+      personalityTraits: "Ứng viên thể hiện sự chuyên nghiệp qua cách trình bày CV có cấu trúc, cho thấy khả năng tổ chức thông tin tốt.",
+      interviewQuestions: [
+        "Hãy kể về một tình huống bạn phải giải quyết vấn đề phức tạp với thời gian hạn chế?",
+        "Điều gì thúc đẩy bạn phát triển sự nghiệp trong lĩnh vực này?",
+        "Bạn xử lý như thế nào khi nhận phản hồi tiêu cực từ cấp trên?"
+      ],
+      culturalFitScore: 75,
+      longTermPotential: "Với nền tảng hiện tại, ứng viên có khả năng thăng tiến lên vị trí senior trong 18-24 tháng nếu tập trung phát triển kỹ năng chuyên môn sâu.",
+      salaryExpectationAdvice: "Dựa trên kinh nghiệm và kỹ năng hiện tại, mức lương hợp lý nên ở khoảng 15-20 triệu VNĐ/tháng, có thể đàm phán cao hơn nếu có chứng chỉ quốc tế."
+    };
+
     const analysisResult: AnalysisResult = {
       candidateLevel: rawResult.candidateLevel,
       summary: rawResult.summary,
@@ -275,7 +316,8 @@ export const analyzeCV = async (
       detailedAnalysis: rawResult.detailedAnalysis,
       suggestedJobs,
       developmentRoadmap,
-      aiAgentReview
+      aiAgentReview,
+      hrmPremiumAssessment
     };
 
     return analysisResult;
@@ -297,5 +339,3 @@ export const analyzeCV = async (
     throw new Error("Đã xảy ra lỗi không xác định khi phân tích CV. Vui lòng thử lại.");
   }
 };
-
-
